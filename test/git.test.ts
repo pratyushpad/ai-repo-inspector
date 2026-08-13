@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,10 +38,11 @@ describe("changedFiles", () => {
   });
 
   it("reports paths that git would quote (non-ASCII, spaces) verbatim", () => {
-    // Regression: git C-escapes any path with non-ASCII bytes, a space, a quote
-    // or a backslash ("café.txt" -> "\"caf\\303\\251.txt\""). Parsing the
-    // human-readable output returned a literal-backslash path matching no file
-    // on disk. Both code paths now read NUL-separated (-z) output instead.
+    // Regression: git C-escapes paths with non-ASCII bytes, control chars, a
+    // quote or a backslash ("café.txt" -> "\"caf\\303\\251.txt\""), and
+    // `status --porcelain` also quotes paths containing spaces. Parsing that
+    // output returned a literal-backslash path matching no file on disk.
+    // Both code paths now read NUL-separated (-z) output instead.
     const unicode = "café.txt";
     const spaced = "plain space.txt";
     writeFileSync(join(repo, unicode), "x\n");
@@ -59,6 +60,16 @@ describe("changedFiles", () => {
     expect(committed).toContain(unicode);
     expect(committed).toContain(spaced);
     expect(committed.some((p) => p.startsWith('"'))).toBe(false);
+  });
+
+  it("lists untracked files individually instead of collapsing a directory", () => {
+    // Regression: `git status --porcelain` without -uall reports a new
+    // directory as "newdir/", i.e. a directory reported as a changed file.
+    mkdirSync(join(repo, "newdir"), { recursive: true });
+    writeFileSync(join(repo, "newdir", "inner.txt"), "x\n");
+    const paths = changedFiles(repo).map((f) => f.path);
+    expect(paths).toContain("newdir/inner.txt");
+    expect(paths).not.toContain("newdir/");
   });
 
   it("reports a staged-then-deleted file as deleted", () => {

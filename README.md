@@ -119,7 +119,7 @@ src/mcp-server.ts   MCP adapter
 src/git.ts          Git inspection
 src/validation.ts   validation execution
 src/report.ts       Markdown report generation
-test/               public starter tests
+test/               unit tests (git parsing, validation, report rendering)
 ```
 
 When finished, submit via **Security → Report a vulnerability** on this

@@ -9,11 +9,13 @@ function git(repositoryPath: string, args: string[]): string {
 }
 
 /**
- * NUL-separated variant. Git *quotes and C-escapes* any path containing
- * non-ASCII bytes, a space, a quote or a backslash (`café.txt` becomes
- * `"caf\303\251.txt"`), so parsing the human-readable output means decoding
- * octal escapes to get a path that actually exists on disk. `-z` sidesteps
- * that entirely: paths come through raw, NUL-separated, never quoted.
+ * NUL-separated variant. Git *quotes and C-escapes* paths containing non-ASCII
+ * bytes, control characters, a quote or a backslash — `café.txt` becomes
+ * `"caf\303\251.txt"` — and `status --porcelain` additionally quotes paths
+ * containing spaces, because its non-`-z` format is whitespace-delimited.
+ * Parsing that output means decoding octal escapes to recover a path that
+ * actually exists on disk. `-z` sidesteps it entirely: paths come through raw,
+ * NUL-separated, never quoted.
  *
  * It also removes the trimming hazard — porcelain's leading status column can
  * be a space, so trimming shifted every path by one character.
@@ -60,8 +62,10 @@ export function changedFiles(repositoryPath: string, baseRef?: string): ChangedF
 
   // Uncommitted changes: tracked (staged + unstaged) plus untracked, de-duplicated.
   // `git status --porcelain` gives both in one pass with rename detection.
+  // -uall lists untracked files individually; without it git collapses a new
+  // directory to "newdir/", which would report a directory as a changed file.
   return parsePorcelain(
-    gitFields(repositoryPath, ["status", "--porcelain", "--find-renames", "-z"]),
+    gitFields(repositoryPath, ["status", "--porcelain", "--find-renames", "-uall", "-z"]),
   );
 }
 
