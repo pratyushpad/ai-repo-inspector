@@ -28,7 +28,7 @@ confident `undefined` report gets trusted. That ordering drove everything below.
 
 ## What did you choose to implement or fix?
 
-Ten fixes, each with a regression test, grouped below into five defect classes
+Eleven fixes, each with a regression test, grouped below into five defect classes
 in severity order (four smaller ones follow the list):
 
 1. **MCP tool was non-functional and silently wrong** (`src/mcp-server.ts`). The
@@ -189,6 +189,21 @@ flag `--base-ref` to MCP callers who have no such flag.
   tests that neither adapter can bypass. Any divergence in *meaning* (as opposed
   to permission) is treated as a bug — that is exactly what `repo_path` vs
   `repoPath` and the parsed-but-ignored `--format json` were.
+- **The strongest objection to this decision, and my answer.** An adversarial
+  review made the point better than I had: *every agent this design fears already
+  holds a shell tool, so denying validation over MCP constrains only agents that
+  were already sandboxed.* If the agent can simply run `inspector review
+  --validate ...` itself, the asymmetry buys nothing. I think that is half right,
+  and the half it gets wrong matters. It is true that this is **not** a sandbox
+  and does not contain a hostile agent; claiming otherwise would be the security
+  theatre the judge suspected. What it does buy is that *this tool* stops being
+  the thing that grants execution. An agent with a shell is the orchestrator's
+  risk to manage; an agent handed shell execution by a read-only-looking
+  inspection tool is *my* design defect. Least privilege is still worth having
+  when it is not the only control — and the honest version of the claim is
+  "default-deny capability", not "boundary". The stronger fix the judge proposed
+  — gating `--validate` on the CLI too, behind an explicit `--allow-validation` —
+  is the next thing I would do, and is listed below.
 - **Evidence that would change this decision:** (1) Usage data showing one channel
   is essentially unused — if ~all calls arrive over MCP, CLI collapses to a debug
   entry point and the answer becomes MCP-first. (2) Evidence that agents routinely
@@ -301,11 +316,28 @@ right call, because none of them simply agreed with me — between them they fou
 a live injection vector in the report, four inaccurate claims in this document,
 and an inflated time estimate.
 
-The judge panel scored the three interface positions on security, product fit
-and engineering cost, with each advocate required to state the sharpest attack on
-the hybrid answer even while defending it. The shipped decision survived, so what
-follows is a position that was argued against rather than one I settled on
-unopposed.
+The judge panel scored the three interface positions on security, product fit and
+engineering cost, with each advocate required to state the sharpest attack on the
+hybrid answer even while defending it. **It did not endorse my answer.** All three
+judges rated the shipped decision "sound with caveats", but on their own criteria
+two of the three scored **CLI-first above hybrid** (security 8 vs 6, engineering
+7.5 vs 6); only the product judge put hybrid first (8 vs 6). I am keeping the
+hybrid decision and reporting the split rather than quietly claiming a win,
+because the reasoning behind the split is more useful than the label:
+
+- The security judge's point was not that hybrid is wrong but that I had not
+  *earned* the word "boundary" yet. Its top mandatory item was the report
+  injection — which is how that defect was found, and it is now fixed.
+- Its second point is the sharpest surviving criticism of my position, and I
+  address it in the decision below rather than burying it here: the CLI executes
+  arbitrary shell with no gate, so an agent that can run the CLI routes around
+  the MCP restriction entirely.
+- Its third point was structural and I acted on it: permission lived in a single
+  `const` in one adapter, so any future adapter would inherit execution by
+  forgetting to deny it. Execution is now a capability the caller must request
+  explicitly (`allowValidation`), enforced in `core.ts`, with tests asserting
+  that a caller who says nothing gets read-only inspection. Default-deny in the
+  shared core is a stronger claim than default-deny in one adapter.
 
 **What the critic caught in this very document.** It found that I had written
 that git quotes any path containing "a space" — which is false for
@@ -387,7 +419,7 @@ Static gates (the same three CI runs):
 ```
 npm run typecheck   → clean, no errors
 npm run build       → clean
-npm test            → 15 tests across 3 files, all passing (1 test at baseline)
+npm test            → 17 tests across 4 files, all passing (1 test at baseline)
 ```
 
 Behavioural verification against scratch repositories, before → after:
@@ -467,18 +499,21 @@ Limitations I know about and did not fix:
 
 The next three things, in order:
 
-1. **Give MCP a structured, bounded contract** — return typed JSON (counts, files,
+1. **Gate `--validate` on the CLI too**, behind an explicit `--allow-validation`.
+   Today the CLI grants execution unconditionally, which means an agent that can
+   run the binary routes around the MCP restriction entirely. Until that closes,
+   the honest description of the current design is "default-deny capability with
+   an ungated escape hatch", and I would rather implement the gate than keep
+   qualifying the sentence.
+2. **Give MCP a structured, bounded contract** — return typed JSON (counts, files,
    per-validation status) with the Markdown as an optional field, and paginate
    long file lists. This is the largest remaining gap between the tool and the
    agent use case it advertises.
-2. **Validate inputs at the core boundary** — assert `repositoryPath` exists and is
-   a git work tree before any `execFile`, so both adapters fail the same clean way
-   and no future adapter can reintroduce the `undefined`-cwd class of bug.
 3. **Cover the adapters with tests** — the CLI argument parser and the MCP handler
-   have no direct tests; the defects I fixed in both were exactly the kind an
-   adapter-level test suite catches. I would add an end-to-end MCP client test to
+   still have no direct tests; the defects I fixed in both were exactly the kind
+   an adapter-level suite catches. I would add an end-to-end MCP client test to
    the CI workflow so the schema and the handler can never drift apart silently
-   again.
+   again — the failure that started this whole review.
 
 ## Approximate focused-work time
 

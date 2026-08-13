@@ -61,11 +61,17 @@ async function main() {
   }
 
   try {
-    const result = await reviewRepository({
-      repositoryPath: args.repositoryPath,
-      baseRef: args.baseRef,
-      validationCommands: args.validations,
-    });
+    const result = await reviewRepository(
+      {
+        repositoryPath: args.repositoryPath,
+        baseRef: args.baseRef,
+        validationCommands: args.validations,
+      },
+      // A human typed this command and authored the validation string, so the
+      // CLI grants execution. The grant is explicit rather than implied by the
+      // absence of a check.
+      { allowValidation: true },
+    );
 
     if (args.format === "json") {
       process.stdout.write(JSON.stringify(result, null, 2) + "\n");

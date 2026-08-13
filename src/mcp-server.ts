@@ -41,13 +41,17 @@ server.tool(
   async (input) => {
     try {
       const requested = input.validation_commands ?? [];
-      const validationCommands = VALIDATION_ALLOWED ? requested : [];
 
-      const result = await reviewRepository({
-        repositoryPath: input.repo_path,
-        baseRef: input.base_ref,
-        validationCommands,
-      });
+      const result = await reviewRepository(
+        {
+          repositoryPath: input.repo_path,
+          baseRef: input.base_ref,
+          validationCommands: requested,
+        },
+        // The core denies execution unless granted. This adapter grants it only
+        // when a human operator opted in when starting the server.
+        { allowValidation: VALIDATION_ALLOWED },
+      );
 
       let report = markdownReport(result);
       if (requested.length > 0 && !VALIDATION_ALLOWED) {
