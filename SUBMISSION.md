@@ -294,10 +294,18 @@ when I hit a tooling usage limit (the contract and reliability verifiers). At
 that point I cut the remaining planned fan-out — a three-advocate judge panel on
 the interface decision, and the completeness critic — and reasoned the decision
 out myself from the confirmed evidence, because finishing mattered more than
-finishing tidily. When capacity came back I ran the cut stages rather than let
-the write-up stand on the shorter version: the critic, a plan-compliance audit,
-and the recovered verifiers. That was the right call, because the critic did not
-agree with me.
+finishing tidily. When capacity came back I ran every cut stage rather than let
+the write-up stand on the shorter version: the judge panel, the completeness
+critic, a plan-compliance audit, and the two recovered verifiers. That was the
+right call, because none of them simply agreed with me — between them they found
+a live injection vector in the report, four inaccurate claims in this document,
+and an inflated time estimate.
+
+The judge panel scored the three interface positions on security, product fit
+and engineering cost, with each advocate required to state the sharpest attack on
+the hybrid answer even while defending it. The shipped decision survived, so what
+follows is a position that was argued against rather than one I settled on
+unopposed.
 
 **What the critic caught in this very document.** It found that I had written
 that git quotes any path containing "a space" — which is false for
@@ -428,12 +436,21 @@ step. The fix was to stop sharing a helper whose contract (`trim()`) was right f
 one caller and silently wrong for the other.
 
 The second, non-technical blocker: I lost access mid-run when I hit a tooling
-usage limit, which killed two of the ten audit agents. Rather than wait, I cut the
-remaining planned fan-out (an interface-decision panel and a completeness critic)
-and finished the reasoning and writing directly — the evidence I needed was
-already collected and the two dead agents covered lenses that other agents had
-already reproduced findings in. Losing capacity mid-task is a scope decision, not
-a reason to leave the work unfinished.
+usage limit, which killed two of the ten audit agents. Rather than wait, I cut
+the remaining planned fan-out — an interface-decision panel and a completeness
+critic — and finished the reasoning and writing directly, because the evidence I
+needed was already collected. Losing capacity mid-task is a scope decision, not a
+reason to leave the work unfinished.
+
+When capacity returned I ran the cut stages rather than let the write-up rest on
+the abbreviated version, and re-ran the two dead verifiers as *regression* checks
+against the fixed code rather than repeating the original audit. That was worth
+doing three times over: the recovered agents found the changed-file path
+injection described above, the critic found four inaccurate claims in this
+document, and the compliance pass found that my focused-time figure was inflated
+and that a correction I had written was never actually pushed. Every one of those
+was a defect in my own work rather than the starter's, which is the argument for
+running the adversarial pass even when you think you are finished.
 
 ## Known limitations and the next three things you would do
 
