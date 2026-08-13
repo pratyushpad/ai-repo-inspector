@@ -45,14 +45,43 @@ npm run typecheck
 npm test
 ```
 
+## Interface model: hybrid, with an asymmetric trust boundary
+
+Both interfaces are supported and both are thin adapters over the same
+`core.ts`, so they cannot drift in *what a review means*. They deliberately
+differ in **what they are allowed to do**, because their callers differ:
+
+| | CLI | MCP |
+|---|---|---|
+| Caller | a developer who typed the command | an autonomous agent |
+| Validation (arbitrary shell) | enabled | **disabled by default** |
+| Output | `review-report.md` or JSON on stdout | report text, bounded |
+| Errors | message + non-zero exit | structured `isError` tool result |
+
+Rationale, tradeoffs, and the evidence that would change this are in
+`SUBMISSION.md`.
+
 ## CLI
 
 ```bash
 npm run inspector -- review --repo ./path/to/repo --format markdown
 npm run inspector -- review --repo ./path/to/repo --validate "npm test"
+npm run inspector -- review --repo ./path/to/repo --base-ref main
+npm run inspector -- review --repo ./path/to/repo --format json
 ```
 
-The report is written to `review-report.md`.
+- **`--repo`** may contain spaces.
+- **Without `--base-ref`** the report covers *uncommitted* work: staged,
+  unstaged, and untracked files. This is what "my changes" usually means.
+- **With `--base-ref <ref>`** it covers the changes committed on this branch
+  since it diverged from that ref (`ref...HEAD`, the PR-review view). An
+  unknown ref is reported as an error, not a stack trace.
+- **`--validate`** runs a shell command per flag (repeatable). A failing
+  command is reported as `failed` in the report; the report is still written
+  and the process exits non-zero so CI can gate on it. Commands are killed
+  after 120s and their output is clipped at 20k characters.
+- **`--format markdown`** (default) writes `review-report.md`;
+  **`--format json`** prints the structured result to stdout instead.
 
 ## MCP
 
@@ -62,9 +91,24 @@ Start the stdio server with:
 npm run mcp-server
 ```
 
-It exposes a `review_repository` tool. Inspect the implementation to determine
-its current input contract and whether it is suitable for the production model
-you propose.
+It exposes one tool, `review_repository`:
+
+| input | type | notes |
+|---|---|---|
+| `repo_path` | string, **required** | absolute path to the repository |
+| `base_ref` | string, optional | omit for uncommitted changes |
+| `validation_commands` | string[], optional | ignored unless enabled (below) |
+
+Validation is **off by default over MCP**: an agent choosing its own shell
+command is arbitrary code execution, so the capability is opt-in by the human
+operator running the server:
+
+```bash
+INSPECTOR_MCP_ALLOW_VALIDATION=1 npm run mcp-server
+```
+
+When validation is requested but disabled, the report still returns and says
+so rather than failing silently. Errors come back as `isError` tool results.
 
 ## Project layout
 
