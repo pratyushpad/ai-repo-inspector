@@ -28,7 +28,8 @@ confident `undefined` report gets trusted. That ordering drove everything below.
 
 ## What did you choose to implement or fix?
 
-Five fixes, each with a regression test. In severity order:
+Nine fixes, each with a regression test, grouped below into five defect classes
+in severity order (four smaller ones follow the list):
 
 1. **MCP tool was non-functional and silently wrong** (`src/mcp-server.ts`). The
    schema declared `repo_path`; the handler read `input.repoPath`, masked by an
@@ -182,9 +183,30 @@ with itself about it. Every structural choice below exists to break that loop.
 | completeness critic | check every claim in this document against actual behaviour |
 | plan-compliance auditor | check that the run followed its own written plan, and flag anything it claimed but did not do |
 
-Findings were **piped**, not batched: each finder's output flowed into its
-verifier as soon as it was ready, so verification of one axis overlapped
-discovery on another.
+**The orchestration was scripted, not improvised.** Rather than prompting agents
+one at a time and reading each result, I wrote the fan-outs as programs: the
+work-list, the fan-out, the schema each agent had to return, and the control
+flow between stages were all declared up front, so the pipeline ran
+deterministically instead of depending on my attention. Three properties mattered
+in a time-boxed run:
+
+- **Structured returns.** Every agent was given a JSON schema (finding id,
+  severity, file, evidence, repro command, effort) and validated against it, so
+  results were data I could sort and dedupe rather than prose I had to re-read.
+- **Pipelining over barriers.** Each finder's output flowed into its verifier as
+  soon as *that* finder was done, so verification of one axis overlapped
+  discovery on another. Waiting for all five finders before verifying any of them
+  would have cost the wall-clock of the slowest finder for no benefit, because
+  the axes were independent.
+- **Deliberate barriers where they earn it.** The judge stage *is* synchronised:
+  a judge cannot score three competing cases until all three exist. Knowing which
+  stages need the barrier and which do not is most of the speed.
+
+**Adapting when the run degraded.** Two agents died mid-run on a usage limit. The
+useful property of a scripted pipeline is that this is recoverable: I could see
+exactly which stages had returned and which had not, so I later re-ran just the
+two lost verifiers — as a *regression* check against the now-fixed code rather
+than a repeat of the original audit — instead of re-running the whole sweep.
 
 **No finding was trusted on assertion.** A verifier had to create a scratch git
 repository, run the repro, and paste the observed output before a finding was
