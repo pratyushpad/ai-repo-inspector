@@ -13,5 +13,11 @@ export type ReviewRequest = {
   repositoryPath: string;
   baseRef?: string;
   validationCommands?: string[];
-  format?: "markdown" | "json";
+};
+
+/** Structured result of a review, rendered by the report layer into markdown or JSON. */
+export type ReviewResult = {
+  repositoryPath: string;
+  changedFiles: ChangedFile[];
+  validationResults: ValidationResult[];
 };
