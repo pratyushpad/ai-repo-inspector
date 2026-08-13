@@ -8,13 +8,22 @@ function git(repositoryPath: string, args: string[]): string {
   }).trim();
 }
 
-// Raw variant: does NOT trim. Porcelain status is column-sensitive (the two
-// leading status columns can be spaces), so trimming would corrupt the parse.
-function gitRaw(repositoryPath: string, args: string[]): string {
-  return execFileSync("git", args, {
+/**
+ * NUL-separated variant. Git *quotes and C-escapes* any path containing
+ * non-ASCII bytes, a space, a quote or a backslash (`café.txt` becomes
+ * `"caf\303\251.txt"`), so parsing the human-readable output means decoding
+ * octal escapes to get a path that actually exists on disk. `-z` sidesteps
+ * that entirely: paths come through raw, NUL-separated, never quoted.
+ *
+ * It also removes the trimming hazard — porcelain's leading status column can
+ * be a space, so trimming shifted every path by one character.
+ */
+function gitFields(repositoryPath: string, args: string[]): string[] {
+  const output = execFileSync("git", args, {
     cwd: repositoryPath,
     encoding: "utf8",
   });
+  return output.split("\0");
 }
 
 function statusFromCode(code: string): ChangedFile["status"] {
@@ -38,19 +47,22 @@ function statusFromCode(code: string): ChangedFile["status"] {
 export function changedFiles(repositoryPath: string, baseRef?: string): ChangedFile[] {
   if (baseRef) {
     assertRefExists(repositoryPath, baseRef);
-    const output = git(repositoryPath, [
-      "diff",
-      "--name-status",
-      "--find-renames",
-      `${baseRef}...HEAD`,
-    ]);
-    return parseNameStatus(output);
+    return parseNameStatus(
+      gitFields(repositoryPath, [
+        "diff",
+        "--name-status",
+        "--find-renames",
+        "-z",
+        `${baseRef}...HEAD`,
+      ]),
+    );
   }
 
   // Uncommitted changes: tracked (staged + unstaged) plus untracked, de-duplicated.
   // `git status --porcelain` gives both in one pass with rename detection.
-  const output = gitRaw(repositoryPath, ["status", "--porcelain", "--find-renames"]);
-  return parsePorcelain(output);
+  return parsePorcelain(
+    gitFields(repositoryPath, ["status", "--porcelain", "--find-renames", "-z"]),
+  );
 }
 
 function assertRefExists(repositoryPath: string, ref: string): void {
@@ -64,31 +76,51 @@ function assertRefExists(repositoryPath: string, ref: string): void {
   }
 }
 
-function parseNameStatus(output: string): ChangedFile[] {
-  return output
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split("\t");
-      const code = parts[0];
-      // Renames/copies report "old\tnew"; report the destination path.
-      const path = parts.length > 2 ? parts[parts.length - 1] : parts.slice(1).join("\t");
-      return { path, status: statusFromCode(code) };
-    });
+/**
+ * `git diff --name-status -z` emits alternating NUL-separated fields:
+ * `<status>\0<path>\0` — except renames and copies, which carry two paths,
+ * `<status>\0<old>\0<new>\0`. Report the destination path.
+ */
+function parseNameStatus(fields: string[]): ChangedFile[] {
+  const changed: ChangedFile[] = [];
+  for (let index = 0; index < fields.length; ) {
+    const code = fields[index];
+    if (!code) {
+      index++;
+      continue;
+    }
+    const isRenameOrCopy = code[0] === "R" || code[0] === "C";
+    const path = isRenameOrCopy ? fields[index + 2] : fields[index + 1];
+    if (path) changed.push({ path, status: statusFromCode(code) });
+    index += isRenameOrCopy ? 3 : 2;
+  }
+  return changed;
 }
 
-function parsePorcelain(output: string): ChangedFile[] {
+/**
+ * `git status --porcelain -z` emits one NUL-terminated record per entry:
+ * two status columns, a space, then the raw path. Renames/copies append the
+ * *origin* path as its own following field, which we consume and discard.
+ */
+function parsePorcelain(fields: string[]): ChangedFile[] {
   const seen = new Map<string, ChangedFile["status"]>();
-  // Split on newlines only; do NOT trim lines — the two status columns matter.
-  for (const line of output.split("\n").filter((l) => l.length > 0)) {
-    // Porcelain v1: cols 0-1 are the staged/worktree status, col 2 is a space,
-    // col 3+ is the path (or "old -> new" for renames).
-    const x = line[0];
-    const y = line[1];
-    let rest = line.slice(3);
-    if (rest.includes(" -> ")) rest = rest.split(" -> ")[1];
-    const path = rest.replace(/^"(.*)"$/, "$1");
-    const code = x !== " " && x !== "?" ? x : y;
+  for (let index = 0; index < fields.length; index++) {
+    const entry = fields[index];
+    // A record is at minimum "XY " plus a path; anything shorter is the
+    // trailing empty field produced by the final NUL.
+    if (!entry || entry.length < 4) continue;
+
+    const staged = entry[0];
+    const worktree = entry[1];
+    const path = entry.slice(3);
+
+    if (staged === "R" || staged === "C" || worktree === "R" || worktree === "C") {
+      index++; // the next field is the origin path, not a new entry
+    }
+
+    // Prefer the worktree column when it reports a deletion: the file is gone
+    // from disk now, which outranks whatever is staged (e.g. "AD").
+    const code = worktree === "D" ? worktree : staged !== " " && staged !== "?" ? staged : worktree;
     seen.set(path, statusFromCode(code));
   }
   return [...seen.entries()].map(([path, status]) => ({ path, status }));

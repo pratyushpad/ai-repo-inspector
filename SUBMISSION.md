@@ -65,6 +65,14 @@ Five fixes, each with a regression test. In severity order:
 Also: renames were reported as a single tab-joined `old<TAB>new` path that exists
 nowhere; they now report the destination path.
 
+Both git parsers were subsequently moved onto NUL-separated (`-z`) output. Git
+quotes and C-escapes any path containing non-ASCII bytes, a space, a quote or a
+backslash — `café.txt` arrives as `"caf\303\251.txt"` — so reading the
+human-readable output means decoding octal escapes or reporting a path that
+matches no file on disk. `-z` removes the whole class of problem. See §3 of the
+AI-suggestion section: this defect was in my *own* first fix, and the process
+caught it rather than my reading of the code.
+
 ## What did you intentionally not do?
 
 - **`overrides: {"@hono/node-server": "2.0.10"}` in `package.json`** — an
@@ -163,7 +171,9 @@ single-threaded prompting.
 - I ran a **red-herring agent** whose only job was to protect the time box by
   identifying work that looks urgent but pays nothing. It is what produced the
   decision to leave the `@hono/node-server` override alone.
-- A **code-review agent** went over the committed diff at the end.
+- A **code-review agent** went over the committed diff at the end, with
+  instructions to reproduce rather than opine. It earned its place: it found a
+  real defect in my own already-committed fix (§3 below).
 - Every fix was drafted and validated in a throwaway copy of the repo first, so
   nothing landed on the real branch until it typechecked and passed tests.
 
@@ -205,6 +215,25 @@ test I had already written for this behaviour caught it. This is the reason I
 treat "it compiles and the tests I thought to write pass" as insufficient:
 the bug lived in the gap between the helper's contract and the new caller's needs.
 
+**4. The same fix was still wrong, and the review pass caught it.** After the
+above landed — committed, tests green, CI green — the code-review agent reported
+that my porcelain parser mishandled quoted paths. I did not take that on faith;
+I reproduced it first, and it was correct: `café.txt` came back as the literal
+string `caf\303\251.txt`, because git C-escapes any path with non-ASCII bytes, a
+space, a quote or a backslash, and my quote-stripping regex removed the quotes
+without decoding the escapes. The `--base-ref` path was worse — it had no
+unquoting at all and returned the surrounding quote characters as part of the
+path. Rather than write an octal decoder, I moved both parsers to `-z`
+(NUL-separated) output, where git emits raw paths and never quotes. I also fixed
+a composite-state bug the same review surfaced (`AD` — staged add, deleted in
+the worktree — reported "added" for a file no longer on disk).
+
+I am including this case because the honest lesson is not "AI wrote a bug." It
+is that my first fix was verified against the cases I thought of (spaces, which
+happened to pass) and not against the case I did not (non-ASCII bytes), and it
+took an adversarial pass over the committed diff to find the gap. Green tests
+measure the tests you wrote, not the behaviour you claimed.
+
 ## Commands used to verify the result, with outcomes
 
 Static gates (the same three CI runs):
@@ -212,7 +241,7 @@ Static gates (the same three CI runs):
 ```
 npm run typecheck   → clean, no errors
 npm run build       → clean
-npm test            → 9 tests across 3 files, all passing (1 test at baseline)
+npm test            → 11 tests across 3 files, all passing (1 test at baseline)
 ```
 
 Behavioural verification against scratch repositories, before → after:
@@ -227,6 +256,9 @@ Behavioural verification against scratch repositories, before → after:
 | repo on `master` (no `--base-ref`) | `fatal: ambiguous argument 'main...HEAD'` | works (uncommitted-changes view) |
 | unknown `--base-ref` | raw git stack trace | `Base ref "nope" was not found in the repository at …` |
 | renamed file | `a.txt<TAB>b.txt (modified)` | `b.txt (modified)` |
+| `café.txt` (non-ASCII) | `caf\303\251.txt` — matches no file on disk | `café.txt` |
+| `plain space.txt` via `--base-ref` | `"plain space.txt"` (quotes in the path) | `plain space.txt` |
+| staged then deleted (`AD`) | `added` for a file not on disk | `deleted` |
 
 MCP verified with a real client handshake (`initialize` → `tools/list` →
 `tools/call`), not by reading the source:
@@ -291,4 +323,4 @@ Roughly 85 focused minutes, in two blocks (a tooling usage limit interrupted the
 run; the clock below excludes that gap).
 
 - Start: 2026-08-12 22:07 PDT
-- Finish: 2026-08-13 11:40 PDT
+- Finish: 2026-08-13 11:55 PDT
