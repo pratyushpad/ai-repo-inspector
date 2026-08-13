@@ -269,6 +269,15 @@ MCP verified with a real client handshake (`initialize` → `tools/list` →
 - After: the same call returns `# Review Report: /…/target-repo` with the correct
   changed files and no `undefined`.
 
+The trust boundary itself was verified the same way, by calling the tool with
+`validation_commands: ["echo VALIDATION-DID-RUN"]` under both server
+configurations rather than trusting the code path:
+
+| server started with | command executed? | report explains why not? |
+|---|---|---|
+| (default) | **no** | yes |
+| `INSPECTOR_MCP_ALLOW_VALIDATION=1` | yes | n/a |
+
 ## A blocker you hit and how you approached it
 
 The porcelain-trimming bug in §3 above was the blocker that cost the most time,
