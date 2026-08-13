@@ -42,10 +42,10 @@ in severity order (four smaller ones follow the list):
    I also renamed the two remaining inputs to `base_ref` and `validation_commands`
    so the whole schema uses one convention. That is a breaking change, and I made
    it deliberately: the tool could never have worked, so there are no callers to
-   break. It is worth noting that zod drops unknown keys silently, so a caller
-   passing the old `baseRef` gets a review of the wrong range rather than an
-   error — the same silent-wrongness class this submission is about. Rejecting
-   unknown keys outright is on the list below.
+   break. The schema rejects unknown keys rather than dropping them, so a caller
+   still sending the old `baseRef` gets `-32602 Required` rather than a silently
+   wrong review — verified against a live server, since "the rename is safe" is
+   exactly the kind of assumption that produced the original bug.
 2. **Uncommitted changes were invisible** (`src/git.ts`). `git diff base...HEAD`
    only sees committed work past the merge-base, and hardcoded `main` as the base,
    so the tool also crashed outright on `master`/`develop` repositories. Without
