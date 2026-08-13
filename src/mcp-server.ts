@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { reviewRepository } from "./core.js";
 import { markdownReport } from "./report.js";
@@ -18,7 +19,16 @@ server.tool(
     "By default this is read-only inspection; running validation commands is disabled " +
     "over MCP unless the operator enabled it.",
   {
-    repo_path: z.string().min(1).describe("Absolute path to the Git repository to inspect."),
+    // Must be absolute. A relative path would resolve against the *server's*
+    // working directory, which the calling agent cannot see and did not choose —
+    // the same silent-wrongness that made the original handler review itself.
+    repo_path: z
+      .string()
+      .min(1)
+      .refine((value) => isAbsolute(value), {
+        message: "repo_path must be an absolute path, not relative to the server's directory.",
+      })
+      .describe("Absolute path to the Git repository to inspect."),
     base_ref: z
       .string()
       .optional()

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import type { ChangedFile } from "./types.js";
 
 function git(repositoryPath: string, args: string[]): string {
@@ -47,6 +48,7 @@ function statusFromCode(code: string): ChangedFile["status"] {
  *   means by "my changes" and is the tool's most common interactive use.
  */
 export function changedFiles(repositoryPath: string, baseRef?: string): ChangedFile[] {
+  assertGitRepository(repositoryPath);
   if (baseRef) {
     assertRefExists(repositoryPath, baseRef);
     return parseNameStatus(
@@ -69,13 +71,34 @@ export function changedFiles(repositoryPath: string, baseRef?: string): ChangedF
   );
 }
 
+/**
+ * Fail with a description of the actual problem. Without this, a missing
+ * directory surfaces as `spawnSync git ENOENT`, which reads as "git is not
+ * installed" and sends the caller looking in the wrong place entirely.
+ */
+function assertGitRepository(repositoryPath: string): void {
+  if (!existsSync(repositoryPath)) {
+    throw new Error(`No such directory: ${repositoryPath}`);
+  }
+  if (!statSync(repositoryPath).isDirectory()) {
+    throw new Error(`Not a directory: ${repositoryPath}`);
+  }
+  try {
+    git(repositoryPath, ["rev-parse", "--git-dir"]);
+  } catch {
+    throw new Error(`Not a Git repository: ${repositoryPath}`);
+  }
+}
+
 function assertRefExists(repositoryPath: string, ref: string): void {
   try {
     git(repositoryPath, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   } catch {
+    // No adapter-specific flag names here: this message is surfaced verbatim by
+    // both the CLI and the MCP tool, and an MCP caller has no `--base-ref`.
     throw new Error(
       `Base ref "${ref}" was not found in the repository at ${repositoryPath}. ` +
-        `Pass an existing branch, tag, or commit via --base-ref.`,
+        `Pass an existing branch, tag, or commit.`,
     );
   }
 }

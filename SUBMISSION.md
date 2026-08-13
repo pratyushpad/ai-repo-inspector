@@ -86,6 +86,17 @@ Untracked files are also listed with `-uall`. Without it git collapses a new
 directory to `newdir/`, so the tool reported a *directory* as a changed file
 while the README promised untracked files.
 
+Finally, a verification pass over the *fixed* code found a survivor of the
+original defect's class: `repo_path` was validated as non-empty but not as
+*absolute*, so a relative value still resolved against the server's own working
+directory and returned a confident report about the wrong place — a quieter
+version of the bug I had just fixed. The MCP schema now requires an absolute
+path, and the core asserts the target exists and is a Git repository, so a bad
+path says `No such directory: …` instead of `spawnSync git ENOENT`, which reads
+as "git is not installed" and sends the caller looking in the wrong place. That
+same pass also caught the error text for an unknown base ref advertising the CLI
+flag `--base-ref` to MCP callers who have no such flag.
+
 ## What did you intentionally not do?
 
 - **`overrides: {"@hono/node-server": "2.0.10"}` in `package.json`** — an
@@ -341,7 +352,7 @@ Static gates (the same three CI runs):
 ```
 npm run typecheck   → clean, no errors
 npm run build       → clean
-npm test            → 12 tests across 3 files, all passing (1 test at baseline)
+npm test            → 13 tests across 3 files, all passing (1 test at baseline)
 ```
 
 Behavioural verification against scratch repositories, before → after:
@@ -403,11 +414,7 @@ Limitations I know about and did not fix:
 
 - The MCP tool still returns one Markdown blob; clipping bounds it but does not
   make it structured or paginated.
-- `repo_path` is not validated as an existing directory before use, so a bad path
-  surfaces as `spawnSync git ENOENT`, which reads like "git is not installed"
-  rather than "that path does not exist".
-- The MCP schema does not reject unknown keys, so a caller passing a mistyped or
-  legacy field name has it silently dropped instead of being told.
+- Validation output clipping is character-based rather than structural.
 - Renames report the destination path but no dedicated `renamed` status, so the
   old path is not preserved anywhere.
 - Output clipping is character-based; a smarter approach would keep the head and

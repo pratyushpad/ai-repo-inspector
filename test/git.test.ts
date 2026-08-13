@@ -72,6 +72,18 @@ describe("changedFiles", () => {
     expect(paths).not.toContain("newdir/");
   });
 
+  it("names the actual problem for a missing path or a non-repository", () => {
+    // Regression: these surfaced as "spawnSync git ENOENT", which reads as
+    // "git is not installed" and sends the caller looking in the wrong place.
+    expect(() => changedFiles(join(repo, "definitely-not-here"))).toThrow(/No such directory/);
+    const notARepo = mkdtempSync(join(tmpdir(), "inspector-plain-"));
+    try {
+      expect(() => changedFiles(notARepo)).toThrow(/Not a Git repository/);
+    } finally {
+      rmSync(notARepo, { recursive: true, force: true });
+    }
+  });
+
   it("reports a staged-then-deleted file as deleted", () => {
     // Composite porcelain state "AD": staged add, deleted in the worktree. The
     // file is not on disk, so "deleted" is the honest status.
